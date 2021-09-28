@@ -129,7 +129,7 @@ else
     echo "Unsupported platform !"
     exit 1
 fi
-
+echo "Detecting Python version..."
 python_version=$($python_cmd --version 2>&1)
 # 2 or 3
 python_major_version=${python_version:7:1}
