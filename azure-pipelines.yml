@@ -32,26 +32,14 @@ jobs:
   strategy:
     matrix:
       # Define all the platform/python version we need
-      MacPython27:
-        platform: 'osx'  # Short name for us
-        imageName: 'macOS-10.14'
-        python.version: '2.7'
       MacPython37:
         platform: 'osx'  # Short name for us
         imageName: 'macOS-10.14'
         python.version: '3.7'
-      WinPython27:
-        platform: 'win'  # Short name for us
-        imageName: 'vs2017-win2016'
-        python.version: '2.7'
       WinPython37:
         platform: 'win' # Short name for us
         imageName: 'vs2017-win2016'
         python.version: '3.7'
-      LinuxPython27:
-        platform: 'linux'  # Short name for us
-        imageName: 'ubuntu-16.04'
-        python.version: '2.7'
       LinuxPython37:
         platform: 'linux'  # Short name for us
         imageName: 'ubuntu-16.04'
