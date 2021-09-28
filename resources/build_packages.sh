@@ -207,7 +207,7 @@ if [ $do_build == 1 ]; then
             # Clean up git but don't fail if there is nothing matching
             git rm -r -f ${target} --ignore-unmatch
             rm -r -f ${target}
-            mkdir ${target}
+            mkdir -p ${target}
         fi
         echo "Copying in ${target}"
         cp -R ./${packagevenv} $target
