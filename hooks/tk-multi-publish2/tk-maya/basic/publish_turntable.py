@@ -11,6 +11,7 @@ import maya.cmds as cmds
 
 import copy
 import datetime
+import logging
 import os
 import pprint
 import re
@@ -450,7 +451,7 @@ class MayaUnrealTurntablePublishPlugin(HookBaseClass):
             },
             "Turntable Assets Path": {
                 "type": "string",
-                "default": "/Game/maya_turntable_assets/",  # TODO: make sure the trailing / is not needed.
+                "default": "/Game/maya_turntable_assets",
                 "description": "Unreal output path where the turntable assets will be imported."
             },
         }
@@ -616,8 +617,8 @@ class MayaUnrealTurntablePublishPlugin(HookBaseClass):
             # is a temporary measure until the publisher handles context switching
             # natively.
             item.context_change_allowed = False
-
-        self.logger.info("Accepting item %s" % item)
+        if accepted:
+            self.logger.info("Accepting item %s" % item)
         return {
             "accepted": accepted,
             "checked": True
@@ -693,7 +694,15 @@ class MayaUnrealTurntablePublishPlugin(HookBaseClass):
             workspace = cmds.workspace(q=True, openWorkspace=True)
             if not workspace:
                 self.logger.error(
-                    "A Maya workspace must be set when no SG TK templates are provided"
+                    "A Maya workspace must be set when no SG TK templates are provided",
+                    extra={
+                        "action_button": {
+                            "label": "Set Project",
+                            "tooltip": "Set the Maya project",
+                            # This is a Mel script not available as a Python command.
+                            "callback": lambda: mel.eval('setProject ""'),
+                        }
+                    },
                 )
                 return False
             movie_dir = cmds.workspace(fileRuleEntry="movie") or "data"
@@ -707,12 +716,12 @@ class MayaUnrealTurntablePublishPlugin(HookBaseClass):
             else:
                 base_name = "%s.mov" % base_name
             publish_path = os.path.join(movie_dir, base_name)
-            next_version_path, version = self._get_next_version_info(publish_path, item)
             # NOTE: local_properties is used here as directed in the publisher
             # docs when there may be more than one plugin operating on the
             # same item in order for each plugin to have it's own values that
             # aren't overwritten by the other.
-            item.local_properties["publish_path"] = next_version_path
+            # Set the publish_path to be explicit.
+            item.local_properties["publish_path"] = publish_path
 
         self.logger.info("Turntable will be published as %s" % item.local_properties["publish_path"])
         item.local_properties["publish_type"] = "Unreal Turntable Render"
@@ -873,7 +882,7 @@ class MayaUnrealTurntablePublishPlugin(HookBaseClass):
         work_path = os.path.normpath(work_path)
         work_name = os.path.splitext(os.path.basename(work_path))[0]
 
-        # Replace non-word characters in filename, Unreal doesn't like those
+        # Replace non-word characters in filenames, Unreal doesn't like those
         # Substitute '_' instead
         exp = re.compile(r"\W", re.UNICODE)
         work_name = exp.sub("_", work_name)
@@ -882,19 +891,36 @@ class MayaUnrealTurntablePublishPlugin(HookBaseClass):
         now = datetime.datetime.now()
         timestamp = str(now.hour) + str(now.minute) + str(now.second)
 
-        fbx_output_path = item.parent.properties.get("sg_fbx_publish_data")
-        if not fbx_output_path:
+        # Use the Fbx which was published by another item or save one now.
+        published_fbx = item.parent.properties.get("sg_fbx_publish_data")
+        if published_fbx:
+            fbx_published_path = published_fbx["path"]["local_path"]
+            # Check the path: Unreal doesn't like non-word characters in filenames
+            self.logger.info("Using published FBX file %s" % fbx_published_path)
+            if re.search(exp, os.path.splitext(fbx_published_path)[0]):
+                fbx_name = work_name + "_" + timestamp + "_turntable.fbx"
+                fbx_output_path = os.path.join(fbx_folder, fbx_name)
+                # Make a copy of the file
+                self.logger.debug(
+                    "Copying %s to %s" % (
+                        fbx_published_path,
+                        fbx_output_path,
+                    )
+                )
+                shutil.copy(fbx_published_path, fbx_output_path)
+            else:
+                fbx_output_path = fbx_published_path
+        else:
             # Replace file extension with .fbx and suffix it with "_turntable"
-            fbx_name = work_name + "_" + timestamp + "_turntable.fbx"
+            fbx_name = "%s_%s_turntable.fbx" % (work_name, timestamp)
             fbx_output_path = os.path.join(fbx_folder, fbx_name)
 
             # Export the FBX to the given output path
             if not self._maya_export_fbx(fbx_output_path):
                 return False
 
-        # Keep the fbx path for cleanup at finalize
-        item.properties["temp_fbx_path"] = fbx_output_path
-
+            # Keep the fbx path for cleanup at finalize
+            item.properties["temp_fbx_path"] = fbx_output_path
         # =======================
         # 2. Import the FBX into Unreal.
         # 3. Instantiate the imported asset into a duplicate of the turntable map.
@@ -907,7 +933,7 @@ class MayaUnrealTurntablePublishPlugin(HookBaseClass):
         temp_project_dir = os.path.join(temp_dir, project_folder)
         temp_project_path = os.path.join(temp_project_dir, project_file)
         self.logger.debug("Copying %s to %s" % (unreal_project_path, temp_project_path))
-        shutil.copytree(project_path, os.path.join(temp_dir, project_folder))
+        shutil.copytree(project_path, temp_project_dir)
 
         current_folder = os.path.dirname( __file__ )
         script_path = os.path.abspath(
@@ -1018,7 +1044,28 @@ class MayaUnrealTurntablePublishPlugin(HookBaseClass):
                 "Expected file %s was not generated" % publish_path
             )
         # Publish the movie file to Shotgun
-        super(MayaUnrealTurntablePublishPlugin, self).publish(settings, item)
+        # If we generated the render from a published FBX, add it as dependency.
+        # Note: adding the published path to the item "publish_dependencies" property
+        # does not work when not having a default2 config with defined roots, and it's
+        # not possible to give a list of ids to `publish`, so we hack the parent
+        # sg_publish_data to be able to setup our published id.
+        if published_fbx:
+            parent_had_sg_publish_data = False
+            if "sg_publish_data" in item.parent.properties:
+                parent_sg_publish_data = item.parent.properties.sg_publish_data
+                parent_had_sg_publish_data = True
+            item.parent.properties.sg_publish_data = published_fbx
+            try:
+                super(MayaUnrealTurntablePublishPlugin, self).publish(settings, item)
+            finally:
+                if parent_had_sg_publish_data:
+                    # Restore the value
+                    item.parent.properties.sg_publish_data = parent_sg_publish_data
+                else:
+                    # Removed the new key we added
+                    del item.parent.properties["sg_publish_data"]
+        else:
+            super(MayaUnrealTurntablePublishPlugin, self).publish(settings, item)
         # Save publish data locally on the item to be able to restore it later
         item.local_properties["sg_publish_data"] = item.properties.sg_publish_data
 
@@ -1092,9 +1139,11 @@ class MayaUnrealTurntablePublishPlugin(HookBaseClass):
         # self._save_to_next_version(item.properties["maya_path"], item, _save_session)
 
         # Delete the exported FBX and scripts from the temp folder
-        temp_folder = item.local_properties.get("temp_folder")
-        if temp_folder:
-            shutil.rmtree(temp_folder)
+        # Unless DEBUG is enabled
+        if self.logger.getEffectiveLevel() > logging.DEBUG:
+            temp_folder = item.local_properties.get("temp_folder")
+            if temp_folder:
+                shutil.rmtree(temp_folder)
 
         # Revive this when Unreal supports spaces in command line Python args
         # fbx_path = item.properties.get("temp_fbx_path")
@@ -1210,7 +1259,7 @@ class MayaUnrealTurntablePublishPlugin(HookBaseClass):
         if os.path.isfile(output_path):
             # Must delete it first, otherwise the Sequencer will add a number in the filename
             try:
-                os.remove(output_filepath)
+                os.remove(output_path)
             except OSError as e:
                 self.logger.debug("Couldn't delete {}. The Sequencer won't be able to output the movie to that file.".format(output_path))
                 return False, None
@@ -1413,6 +1462,12 @@ class MayaUnrealTurntablePublishPlugin(HookBaseClass):
                 fw.disk_location
             )
         )
+
+    def _copy_work_to_publish(self, settings, item):
+        """
+        Override base implementation to do nothing.
+        """
+        pass
 
 def _session_path():
     """
