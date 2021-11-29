@@ -706,8 +706,10 @@ class MayaUnrealTurntablePublishPlugin(HookBaseClass):
                 )
                 return False
             movie_dir = cmds.workspace(fileRuleEntry="movie") or "data"
-            # Get the full path
-            movie_dir = cmds.workspace(expandName=movie_dir)
+            # Get the full path. We append a "publishes" folder, otherwise the
+            # base implementation will keep offering movies which are already
+            # published
+            movie_dir = cmds.workspace(expandName=os.path.join(movie_dir, "publishes"))
 
             # Build a name from the Maya scene
             base_name, _ = os.path.splitext(os.path.basename(path))

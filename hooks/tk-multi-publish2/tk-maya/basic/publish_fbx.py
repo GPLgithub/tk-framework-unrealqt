@@ -269,8 +269,8 @@ class MayaFBXPublishPlugin(HookBaseClass):
                 )
                 return False
             fbx_dir = cmds.workspace(fileRuleEntry="FBX") or "data"
-            # Get the full path
-            fbx_dir = cmds.workspace(expandName=fbx_dir)
+            # Append a "publishes" folder and get the full path
+            fbx_dir = cmds.workspace(expandName=os.path.join(fbx_dir, "publishes"))
 
             # Build a name from the Maya scene
             base_name = "%s.fbx" % publish_name
