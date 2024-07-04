@@ -988,7 +988,10 @@ class MayaUnrealTurntablePublishPlugin(HookBaseClass):
         # The FBX will be exported to a temp folder
         # Another folder can be specified as long as the name has no spaces
         # Spaces are not allowed in command line Unreal Python args
-        temp_folder = tempfile.mkdtemp(suffix="temp_unreal_shotgun")
+        base_temp_dir = None
+        if sys.platform == "win32":
+            base_temp_dir = "C:\Temp"
+        temp_folder = tempfile.mkdtemp(suffix="temp_unreal_shotgun", dir=base_temp_dir)
         # Store the temp folder path on the item for cleanup in finalize
         item.local_properties["temp_folder"] = temp_folder
         fbx_folder = temp_folder
@@ -1043,7 +1046,7 @@ class MayaUnrealTurntablePublishPlugin(HookBaseClass):
         # Use the unreal_setup_turntable to do this in Unreal
         self.logger.info("Setting up Unreal turntable project...")
         # Copy the Unreal project in a temp location so we can modify it
-        temp_dir = tempfile.mkdtemp()
+        temp_dir = tempfile.mkdtemp(dir=base_temp_dir)
         project_path, project_file = os.path.split(unreal_project_path)
         project_folder = os.path.basename(project_path)
         temp_project_dir = os.path.join(temp_dir, project_folder)
