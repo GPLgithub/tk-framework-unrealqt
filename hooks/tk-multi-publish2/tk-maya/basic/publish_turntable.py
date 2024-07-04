@@ -1591,9 +1591,27 @@ class MayaUnrealTurntablePublishPlugin(HookBaseClass):
             )
         )
 
+    def _copy_to_publish(self, settings, item):
+        """
+        Override base implementation to do nothing
+        since we're not copying a file but rendering
+        directly to the publish location.
+        """
+        pass
+
+    def _copy_local_to_publish(self, settings, item):
+        """
+        Override base implementation to do nothing
+        since we're not copying a file but rendering
+        directly to the publish location.
+        """
+        pass
+
     def _copy_work_to_publish(self, settings, item):
         """
-        Override base implementation to do nothing.
+        Override base implementation to do nothing
+        since we're not copying a file but rendering
+        directly to the publish location.
         """
         pass
 
