@@ -1001,7 +1001,7 @@ class MayaUnrealTurntablePublishPlugin(HookBaseClass):
             else:
                 self.logger.warning(
                     "Couldn't retrieve a temp base directory without "
-                    "the user name in it, using standard %TEMP% base"
+                    "the user name in it, using standard TEMP base"
                 )
         temp_folder = tempfile.mkdtemp(suffix="temp_unreal_shotgun", dir=base_temp_dir)
         # Store the temp folder path on the item for cleanup in finalize
